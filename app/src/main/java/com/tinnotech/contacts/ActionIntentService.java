@@ -5,6 +5,8 @@ import android.app.Service;
 import android.content.ComponentName;
 import android.content.ContentProviderOperation;
 import android.content.ContentResolver;
+import android.content.ContentUris;
+import android.content.ContentValues;
 import android.content.Intent;
 import android.content.Context;
 import android.content.OperationApplicationException;
@@ -35,8 +37,30 @@ public class ActionIntentService extends IntentService {
     public static final int ACTION_TYPE_UPDATE = 20;
     public static final int ACTION_TYPE_REFRESH = 21;
 
-    private static final String TAG = "ActionIntentService";
+    private static final Uri RAW_CONTACTS_URI = ContactsContract.RawContacts.CONTENT_URI;
+    private static final Uri DATA_URI = ContactsContract.Data.CONTENT_URI;
+    private static final Uri GROUP_URI = ContactsContract.Groups.CONTENT_URI;
 
+    private static final String GROUP_SOURCE_ID = ContactsContract.Groups.SOURCE_ID;
+
+    private static final String ACCOUNT_TYPE = ContactsContract.RawContacts.ACCOUNT_TYPE;
+    private static final String ACCOUNT_NAME = ContactsContract.RawContacts.ACCOUNT_NAME;
+
+    private static final String RAW_CONTACT_ID = ContactsContract.Contacts.Data.RAW_CONTACT_ID;
+    private static final String MIMETYPE = ContactsContract.Contacts.Data.MIMETYPE;
+
+    private static final String NAME_ITEM_TYPE = ContactsContract.CommonDataKinds.StructuredName.CONTENT_ITEM_TYPE;
+    private static final String DISPLAY_NAME = ContactsContract.CommonDataKinds.StructuredName.DISPLAY_NAME;
+
+    private static final String PHONE_ITEM_TYPE = ContactsContract.CommonDataKinds.Phone.CONTENT_ITEM_TYPE;
+    private static final String PHONE_NUMBER = ContactsContract.CommonDataKinds.Phone.NUMBER;
+    private static final String PHONE_TYPE = ContactsContract.CommonDataKinds.Phone.TYPE;
+    private static final int PHONE_TYPE_MOBILE = ContactsContract.CommonDataKinds.Phone.TYPE_MOBILE;
+
+    private static final String GROUP_ITEM_TYPE = ContactsContract.CommonDataKinds.GroupMembership.CONTENT_ITEM_TYPE;
+    private static final String GROUP_ID = ContactsContract.CommonDataKinds.GroupMembership.GROUP_ROW_ID;
+
+    private static final String TAG = "ActionIntentService";
 
     public ActionIntentService() {
         super("ActionIntentService");
@@ -57,10 +81,10 @@ public class ActionIntentService extends IntentService {
                     handleActionLogin(json);
                     break;
                 case ACTION_TYPE_BIND:
-                    handleActionBind(json);
+                    handleActionBind();
                     break;
                 case ACTION_TYPE_UNBIND:
-                    handleActionUnBind(json);
+                    handleActionUnBind();
                     break;
                 case ACTION_TYPE_COMMON_SETTING:
                     handleActionCommonSetting(json);
@@ -83,6 +107,70 @@ public class ActionIntentService extends IntentService {
         Log.e(TAG, "deleteAllContacts");
     }
 
+    private void createDefaultGroups(){
+        //查询内置群组是否已创建
+        String group_source_id;
+        long group_id_family_profile = 0, group_id_family = 0, group_id_contact = 0, group_id_friend = 0;
+        Cursor groupCursor = getContentResolver().query(GROUP_URI,
+                new String[]{GROUP_SOURCE_ID, ContactsContract.Groups._ID},
+                null,
+                null,
+                null);
+        if(groupCursor.getCount() > 0){
+            while(groupCursor.moveToNext()){
+                group_source_id = groupCursor.getString(0);
+                if(group_source_id == null) continue;
+                if(group_source_id.equals(Const.CONTACTS_GROUP_FAMILY_PROFILE)){
+                    group_id_family_profile = groupCursor.getInt(1);
+                }
+                else if(group_source_id.equals(Const.CONTACTS_GROUP_CONTACT)){
+                    group_id_contact = groupCursor.getInt(1);
+                }
+                else if(group_source_id.equals(Const.CONTACTS_GROUP_FAMILY)){
+                    group_id_family = groupCursor.getInt(1);
+                }
+                else if(group_source_id.equals(Const.CONTACTS_GROUP_FRIEND)){
+                    group_id_friend = groupCursor.getInt(1);
+                }
+                if((group_id_family_profile != 0) && (group_id_contact != 0) && (group_id_family != 0) && (group_id_friend != 0))
+                    break;
+            }
+        }
+        groupCursor.close();
+
+        if(group_id_family_profile == 0) {
+            ContentValues values = new ContentValues();
+            values.put(GROUP_SOURCE_ID, Const.CONTACTS_GROUP_FAMILY_PROFILE);
+            Uri uri = getContentResolver().insert(GROUP_URI, values);
+            group_id_family_profile = ContentUris.parseId(uri);
+            Log.e(TAG, "crate group_id_family_profile id:" + group_id_family_profile);
+        }
+
+        if(group_id_contact == 0) {
+            ContentValues values = new ContentValues();
+            values.put(GROUP_SOURCE_ID, Const.CONTACTS_GROUP_CONTACT);
+            Uri uri = getContentResolver().insert(GROUP_URI, values);
+            group_id_contact = ContentUris.parseId(uri);
+            Log.e(TAG, "crate group_id_contact id:" + group_id_contact);
+        }
+
+        if(group_id_family == 0) {
+            ContentValues values = new ContentValues();
+            values.put(GROUP_SOURCE_ID, Const.CONTACTS_GROUP_FAMILY);
+            Uri uri = getContentResolver().insert(GROUP_URI, values);
+            group_id_family = ContentUris.parseId(uri);
+            Log.e(TAG, "crate group_id_family id:" + group_id_family);
+        }
+
+        if(group_id_friend == 0) {
+            ContentValues values = new ContentValues();
+            values.put(GROUP_SOURCE_ID, Const.CONTACTS_GROUP_FRIEND);
+            Uri uri = getContentResolver().insert(GROUP_URI, values);
+            group_id_friend = ContentUris.parseId(uri);
+            Log.e(TAG, "crate group_id_friend id:" + group_id_friend);
+        }
+
+    }
     private void batchAddContact(ArrayList<Person> list)
             throws RemoteException, OperationApplicationException {
         ArrayList<ContentProviderOperation> ops = new ArrayList<>();
@@ -92,41 +180,52 @@ public class ActionIntentService extends IntentService {
         for (Person person : list) {
             rawContactInsertIndex = ops.size(); // 有了它才能给真正的实现批量添加
 
-            ops.add(ContentProviderOperation.newInsert(ContactsContract.RawContacts.CONTENT_URI)
-                    .withValue(ContactsContract.RawContacts.ACCOUNT_TYPE, null)
-                    .withValue(ContactsContract.RawContacts.ACCOUNT_NAME, null)
+            ops.add(ContentProviderOperation.newInsert(RAW_CONTACTS_URI)
+                    .withValue(ACCOUNT_TYPE, null)
+                    .withValue(ACCOUNT_NAME, null)
                     .withYieldAllowed(true).build());
 
-            // 添加姓名
+            // name
             ops.add(ContentProviderOperation
-                    .newInsert(android.provider.ContactsContract.Data.CONTENT_URI)
-                    .withValueBackReference(ContactsContract.Contacts.Data.RAW_CONTACT_ID,
-                            rawContactInsertIndex)
-                    .withValue(ContactsContract.Contacts.Data.MIMETYPE,
-                            ContactsContract.CommonDataKinds.StructuredName.CONTENT_ITEM_TYPE)
-                    .withValue(ContactsContract.CommonDataKinds.StructuredName.DISPLAY_NAME,
-                            person.getName())
+                    .newInsert(DATA_URI)
+                    .withValueBackReference(RAW_CONTACT_ID, rawContactInsertIndex)
+                    .withValue(MIMETYPE, NAME_ITEM_TYPE)
+                    .withValue(DISPLAY_NAME, person.getName())
                     .withYieldAllowed(true).build());
-            // 添加号码
 
+            // phone
             phone_num = person.getPhone();
             if(phone_num != null) {
                 for(i = 0; i < phone_num.length; i ++) {
                     ops.add(ContentProviderOperation
-                            .newInsert(
-                                    android.provider.ContactsContract.Data.CONTENT_URI)
-                            .withValueBackReference(ContactsContract.Contacts.Data.RAW_CONTACT_ID,
-                                    rawContactInsertIndex)
-                            .withValue(ContactsContract.Contacts.Data.MIMETYPE,
-                                    ContactsContract.CommonDataKinds.Phone.CONTENT_ITEM_TYPE)
-                            .withValue(ContactsContract.CommonDataKinds.Phone.NUMBER, phone_num[i])
-                            .withValue(ContactsContract.CommonDataKinds.Phone.TYPE,
-                                    ContactsContract.CommonDataKinds.Phone.TYPE_MOBILE)
-                            .withValue(ContactsContract.CommonDataKinds.Phone.LABEL, "")
+                            .newInsert(DATA_URI)
+                            .withValueBackReference(RAW_CONTACT_ID, rawContactInsertIndex)
+                            .withValue(MIMETYPE, PHONE_ITEM_TYPE)
+                            .withValue(PHONE_NUMBER, phone_num[i])
+                            .withValue(PHONE_TYPE, PHONE_TYPE_MOBILE)
                             .withYieldAllowed(true)
                             .build());
                 }
             }
+
+            // user_id
+
+            //group
+            ops.add(ContentProviderOperation
+                    .newInsert(DATA_URI)
+                    .withValueBackReference(RAW_CONTACT_ID, rawContactInsertIndex)
+                    .withValue(MIMETYPE, GROUP_ITEM_TYPE)
+                    .withValue(GROUP_ID, person.getGroup())
+                    .withYieldAllowed(true).build());
+
+            //device_type
+            //spell
+            //portrait_url
+            //portrait_id
+            //birthday
+            //gender
+            //auth
+
         }
         // 真正添加
         getContentResolver().applyBatch(ContactsContract.AUTHORITY, ops);
@@ -147,6 +246,8 @@ public class ActionIntentService extends IntentService {
             if(count != 0)
                 deleteAllContacts();
         }
+        //创建默认群组
+        createDefaultGroups();
     }
 
     private void handleActionLogin(String json_str) {
@@ -168,11 +269,21 @@ public class ActionIntentService extends IntentService {
         startService(intent);
     }
 
-    private void handleActionBind(String json_str) {
-        //todo 绑定之后 待验证服务器是否主动推送了电话本，还是需要主动上传版本号
+    private void handleActionBind() {
+        /* 绑定之后 需要主动上传版本号 */
+        //创建默认群组
+        createDefaultGroups();
+        JSONObject obj = new JSONObject();
+        obj.put(Const.SP_KEY_CONTACT, 0);
+        obj.put(Const.SP_KEY_FAMILY, 0);
+        obj.put(Const.SP_KEY_FRIEND, 0);
+        Intent intent = new Intent(getApplicationContext(), NetworkService.class);
+        intent.putExtra("type", ACTION_TYPE_UPDATE);
+        intent.putExtra("json", obj.toString());
+        startService(intent);
     }
 
-    private void handleActionUnBind(String json_str) {
+    private void handleActionUnBind() {
         deleteAllContacts();
         SharedPreferences sp = getSharedPreferences(Const.SP_FILE_NAME, Context.MODE_PRIVATE);
         if(sp != null){
@@ -313,4 +424,5 @@ public class ActionIntentService extends IntentService {
             Log.e(TAG, "handleActionContactRefresh type = " + update_type);
         }
     }
+
 }

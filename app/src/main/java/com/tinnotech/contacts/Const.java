@@ -21,16 +21,16 @@ public class Const {
     public static final String SP_KEY_WHITE_LIST_ENABLE = "white_list_enabled";
 
     /* 通讯录群组 家庭profile */
-    public static final int CONTACTS_GROUP_FAMILY_PROFILE = 0;
+    public static final String CONTACTS_GROUP_FAMILY_PROFILE = "family_profile";
 
     /* 通讯录群组 白名单成员 */
-    public static final int CONTACTS_GROUP_CONTACT = 1;
+    public static final String CONTACTS_GROUP_CONTACT = "contact";
 
     /* 通讯录群组 家庭成员 */
-    public static final int CONTACTS_GROUP_FAMILY = 2;
+    public static final String CONTACTS_GROUP_FAMILY = "family";
 
     /* 通讯录群组 好友成员 */
-    public static final int CONTACTS_GROUP_FRIEND = 3;
+    public static final String CONTACTS_GROUP_FRIEND = "friend";
 
     /* 最多可以存储4个手机号 */
     public static final int MAX_PHONE_NUM = 4;
