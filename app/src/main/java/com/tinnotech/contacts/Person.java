@@ -7,7 +7,7 @@ package com.tinnotech.contacts;
 public class Person {
     private Long user_id;// 唯一id
     private String name;// 姓名
-    private String group; //所在群组
+    private int group; //所在群组
     private Integer device_type;// 联系人的设备类型，家庭和好友群组必须携带比如 1:T1, 2:T2,3:M1,...1000:APP
     private String spell;// 姓名的拼音全拼，全大写,用来排序
     private String[] phone;// 号码数组,一个必填
@@ -33,11 +33,11 @@ public class Person {
         this.name = name;
     }
 
-    public String getGroup() {
+    public int getGroup() {
         return group;
     }
 
-    public void setGroup(String group) {
+    public void setGroup(int group) {
         this.group = group;
     }
 
