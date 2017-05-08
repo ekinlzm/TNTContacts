@@ -178,7 +178,6 @@ public class ActionIntentService extends IntentService {
     }
 
     private void sendNetWorkMsg(int type, String json){
-
         Intent intent = new Intent(getApplicationContext(), NetworkService.class);
         intent.putExtra("type", type);
         intent.putExtra("json", json);
