@@ -5,24 +5,24 @@ package com.tinnotech.contacts;
  */
 
 public class Person {
-    private Long user_id;// 唯一id
+    private Long userId;// 唯一id
     private String name;// 姓名
     private int group; //所在群组
-    private Integer device_type;// 联系人的设备类型，家庭和好友群组必须携带比如 1:T1, 2:T2,3:M1,...1000:APP
+    private Integer deviceType;// 联系人的设备类型，家庭和好友群组必须携带比如 1:T1, 2:T2,3:M1,...1000:APP
     private String spell;// 姓名的拼音全拼，全大写,用来排序
     private String[] phone;// 号码数组,一个必填
-    private String portrait_url;// 头像url, 非必须
-    private Integer portrait_id;// 内置头像id，用于某些不支持头像下载的项目。
+    private String portraitUrl;// 头像url, 非必须
+    private Integer portraitId;// 内置头像id，用于某些不支持头像下载的项目。
     private Integer birthday;// 生日，friend和family群组里的设备成员必须携带。用于交友显示。格式为YYYYMMDD
     private Integer gender;// 性别， friend和family群组里的设备成员必须携带。用于交友显示。0-女 1-男
     private Integer auth;// 操作权限mask，通过权限列表按位或获得
 
-    public Long getUser_id() {
-        return user_id;
+    public Long getUserId() {
+        return userId;
     }
 
-    public void setUser_id(Long user_id) {
-        this.user_id = user_id;
+    public void setUserId(Long userId) {
+        this.userId = userId;
     }
 
     public String getName() {
@@ -41,12 +41,12 @@ public class Person {
         this.group = group;
     }
 
-    public Integer getDevice_type() {
-        return device_type;
+    public Integer getDeviceType() {
+        return deviceType;
     }
 
-    public void setDevice_type(Integer device_type) {
-        this.device_type = device_type;
+    public void setDeviceType(Integer deviceType) {
+        this.deviceType = deviceType;
     }
 
     public String getSpell() {
@@ -65,20 +65,20 @@ public class Person {
         this.phone = phone;
     }
 
-    public String getPortrait_url() {
-        return portrait_url;
+    public String getPortraitUrl() {
+        return portraitUrl;
     }
 
-    public void setPortrait_url(String portrait_url) {
-        this.portrait_url = portrait_url;
+    public void setPortraitUrl(String portraitUrl) {
+        this.portraitUrl = portraitUrl;
     }
 
-    public Integer getPortrait_id() {
-        return portrait_id;
+    public Integer getPortraitId() {
+        return portraitId;
     }
 
-    public void setPortrait_id(Integer portrait_id) {
-        this.portrait_id = portrait_id;
+    public void setPortraitId(Integer portraitId) {
+        this.portraitId = (portraitId == null) ? 0 : portraitId;
     }
 
     public Integer getBirthday() {
@@ -86,7 +86,7 @@ public class Person {
     }
 
     public void setBirthday(Integer birthday) {
-        this.birthday = birthday;
+        this.birthday = (birthday == null) ? 0 : birthday;
     }
 
     public Integer getGender() {
@@ -94,7 +94,7 @@ public class Person {
     }
 
     public void setGender(Integer gender) {
-        this.gender = gender;
+        this.gender = (gender == null) ? -1 : gender;
     }
 
     public Integer getAuth() {

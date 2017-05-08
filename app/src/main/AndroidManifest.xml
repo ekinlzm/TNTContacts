@@ -5,6 +5,7 @@
     <uses-permission android:name="android.permission.READ_CONTACTS"/>
     <uses-permission android:name="android.permission.WRITE_CONTACTS"/>
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
+    <uses-permission android:name="android.permission.INTERNET"/>
 
     <application
         android:allowBackup="true"
@@ -56,6 +57,10 @@
         <service
             android:name=".NetworkService"
             android:enabled="true"
+            android:exported="false">
+        </service>
+        <service
+            android:name=".PortraitManagerService"
             android:exported="false">
         </service>
     </application>

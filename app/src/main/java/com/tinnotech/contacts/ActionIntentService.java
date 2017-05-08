@@ -1,5 +1,6 @@
 package com.tinnotech.contacts;
 
+import android.app.ActivityManager;
 import android.app.IntentService;
 import android.content.ContentProviderOperation;
 import android.content.ContentResolver;
@@ -17,7 +18,10 @@ import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONArray;
 import com.alibaba.fastjson.JSONObject;
 
+import java.io.File;
+import java.io.FileInputStream;
 import java.util.ArrayList;
+import java.util.Date;
 
 public class ActionIntentService extends IntentService {
     public static final int ACTION_TYPE_INIT = -1;  //内部操作 开机初始化检查
@@ -29,9 +33,15 @@ public class ActionIntentService extends IntentService {
     public static final int ACTION_TYPE_REFRESH = 21;
 
     private static final String TAG = "ActionIntentService";
+    private static final Long CACHE_CLEAN_INTERVAL = 7L * 24 * 3600 * 1000;
 
     public ActionIntentService() {
         super("ActionIntentService");
+    }
+
+    @Override
+    public void onDestroy() {
+        super.onDestroy();
     }
 
     @Override
@@ -70,16 +80,19 @@ public class ActionIntentService extends IntentService {
     }
 
     private void deleteAllContacts(){
+        //raw id 没有重新开始计数, file下面 photos文件没有删除。 需要获取系统权限 清理用户数据
         Uri uri = Uri.parse("content://com.android.contacts/raw_contacts");
         getContentResolver().delete(uri,"_id!=-1", null);
         Log.e(TAG, "deleteAllContacts");
     }
 
+
     private void batchAddContact(ArrayList<Person> list)
             throws RemoteException, OperationApplicationException {
         ArrayList<ContentProviderOperation> ops = new ArrayList<>();
         int rawContactInsertIndex = 0, i;
-        String phone_num[];
+        String phone_num[], portrait_url = null;
+
 
         for (Person person : list) {
             rawContactInsertIndex = ops.size(); // 有了它才能给真正的实现批量添加
@@ -120,23 +133,59 @@ public class ActionIntentService extends IntentService {
                     .withValue(Const.MIMETYPE, Const.CONTACT_ITEM_TYPE)
                     .withValue(Const.CONTACT_GROUP_ID, person.getGroup())
                     .withValue(Const.CONTACT_NAME, person.getName())
-                    .withValue(Const.CONTACT_USER_ID, person.getUser_id())
-                    .withValue(Const.CONTACT_DEVICE_TYPE, person.getDevice_type())
+                    .withValue(Const.CONTACT_USER_ID, person.getUserId())
+                    .withValue(Const.CONTACT_DEVICE_TYPE, person.getDeviceType())
                     .withValue(Const.CONTACT_SPELL, person.getSpell())
-                    .withValue(Const.CONTACT_PORTRAIT_ID, person.getPortrait_id())
-                    .withValue(Const.CONTACT_PORTRAIT_URL, person.getPortrait_url())
+                    .withValue(Const.CONTACT_PORTRAIT_ID, person.getPortraitId())
+                    .withValue(Const.CONTACT_PORTRAIT_URL, person.getPortraitUrl())
                     .withValue(Const.CONTACT_BIRTHDAY, person.getBirthday())
                     .withValue(Const.CONTACT_GENDER, person.getGender())
                     .withValue(Const.CONTACT_AUTH, person.getAuth())
                     .withYieldAllowed(true).build());
+
+            //添加头像
+            portrait_url = person.getPortraitUrl();
+            if(portrait_url != null){
+                String file_name = PortraitManagerService.getFileNameFromUrl(portrait_url);
+                File portraitFile = new File(getDir(Const.portrait_cache_dir,Context.MODE_PRIVATE) + "/" + file_name);
+                if(portraitFile.exists()){
+                    byte[] photoData = null;
+                    try {
+                        FileInputStream io = new FileInputStream(portraitFile);
+                        photoData = new byte[io.available()];
+                        io.read(photoData);
+                        io.close();
+                        ops.add(ContentProviderOperation
+                                .newInsert(Const.DATA_URI)
+                                .withValueBackReference(Const.RAW_CONTACT_ID, rawContactInsertIndex)
+                                .withValue(Const.MIMETYPE, Const.PORTRAIT_ITEM_TYPE)
+                                .withValue(Const.PORTRAIT_PHOTO, photoData)
+                                .withYieldAllowed(true).build());
+                    }catch(Exception e){
+                        e.printStackTrace();
+                    }
+                }
+                else{
+
+                    PortraitManagerService.addDownloadItem(portrait_url);
+                }
+
+            }
 
         }
         // 真正添加
         getContentResolver().applyBatch(ContactsContract.AUTHORITY, ops);
     }
 
+    private void sendNetWorkMsg(int type, String json){
+
+        Intent intent = new Intent(getApplicationContext(), NetworkService.class);
+        intent.putExtra("type", type);
+        intent.putExtra("json", json);
+        startService(intent);
+    }
     private void handleActionInit() {
-        /* 查看电话本版本号， 如果所有的都为0， 确保系统电话本已清理 */
+        /* 查看电话本版本号， 如果所有的都为0， 清理电话本， 否则检查头像是否都已经下载完毕， 另外定期的清理一下头像缓存 */
         SharedPreferences sp = getSharedPreferences(Const.SP_FILE_NAME, Context.MODE_PRIVATE);
         final int contact_version = sp.getInt(Const.SP_KEY_CONTACT, 0);
         final int family_version = sp.getInt(Const.SP_KEY_FAMILY, 0);
@@ -145,10 +194,25 @@ public class ActionIntentService extends IntentService {
             ContentResolver cr = getContentResolver();
             Cursor cur = cr.query(ContactsContract.Contacts.CONTENT_URI,
                     null, null, null, null);
-            int count = cur.getCount();
-            cur.close();
-            if(count != 0)
-                deleteAllContacts();
+            if(cur != null) {
+                int count = cur.getCount();
+                cur.close();
+                if (count != 0)
+                    deleteAllContacts();
+            }
+        }else{
+            //清理无用的头像，一周清理一次, 并下载缺失的
+            boolean cleanUseless = false;
+            Date dt = new Date();
+            Long time = dt.getTime();
+            final Long last_time = sp.getLong(Const.SP_KEY_PORTRAIT_CACHE_CLEAN, 0L);
+            if(time - last_time >= CACHE_CLEAN_INTERVAL){
+                SharedPreferences.Editor editor = sp.edit();
+                editor.putLong(Const.SP_KEY_PORTRAIT_CACHE_CLEAN, time);
+                editor.commit();
+                cleanUseless = true;
+            }
+            PortraitManagerService.checkPortraitCache(getApplicationContext(), cleanUseless);
         }
     }
 
@@ -165,10 +229,7 @@ public class ActionIntentService extends IntentService {
         obj.put(Const.SP_KEY_CONTACT, contact_version);
         obj.put(Const.SP_KEY_FAMILY, family_version);
         obj.put(Const.SP_KEY_FRIEND, friend_version);
-        Intent intent = new Intent(getApplicationContext(), NetworkService.class);
-        intent.putExtra("type", ACTION_TYPE_UPDATE);
-        intent.putExtra("json", obj.toString());
-        startService(intent);
+        sendNetWorkMsg(ACTION_TYPE_UPDATE, obj.toString());
     }
 
     private void handleActionBind() {
@@ -177,13 +238,13 @@ public class ActionIntentService extends IntentService {
         obj.put(Const.SP_KEY_CONTACT, 0);
         obj.put(Const.SP_KEY_FAMILY, 0);
         obj.put(Const.SP_KEY_FRIEND, 0);
-        Intent intent = new Intent(getApplicationContext(), NetworkService.class);
-        intent.putExtra("type", ACTION_TYPE_UPDATE);
-        intent.putExtra("json", obj.toString());
-        startService(intent);
+        sendNetWorkMsg(ACTION_TYPE_UPDATE, obj.toString());
+        //创建头像cache目录
+        File portraitCacheDir = getDir(Const.portrait_cache_dir,Context.MODE_PRIVATE);
     }
 
     private void handleActionUnBind() {
+        //清理系统电话本
         deleteAllContacts();
         SharedPreferences sp = getSharedPreferences(Const.SP_FILE_NAME, Context.MODE_PRIVATE);
         if(sp != null){
@@ -191,7 +252,21 @@ public class ActionIntentService extends IntentService {
             editor.clear();
             editor.commit();
         }
-
+        //清空缓存目录；
+        File cacheDir = getCacheDir();
+        if (cacheDir.exists()) {
+            for (File item : cacheDir.listFiles()) {
+                item.delete();
+            }
+        }
+        //清理头像缓存
+        PortraitManagerService.clearDownloadList();
+        File portraitCacheDir = getDir(Const.portrait_cache_dir,Context.MODE_PRIVATE);
+        if (portraitCacheDir.exists()) {
+            for (File item : portraitCacheDir.listFiles()) {
+                item.delete();
+            }
+        }
     }
 
     private void handleActionCommonSetting(String json_str) {
@@ -239,12 +314,12 @@ public class ActionIntentService extends IntentService {
                     person_obj = person_array.getJSONObject(j);
                     Person person = new Person();
                     person.setGroup(Const.GROUP_ID_CONTACT);
-                    person.setUser_id(person_obj.getLong("user_id"));
+                    person.setUserId(person_obj.getLong("user_id"));
                     person.setName(person_obj.getString("name"));
-                    person.setDevice_type(person_obj.getInteger("device_type"));
+                    person.setDeviceType(person_obj.getInteger("device_type"));
                     person.setSpell(person_obj.getString("spell"));
-                    person.setPortrait_id(person_obj.getInteger("portrait_id"));
-                    person.setPortrait_url(person_obj.getString("portrait_url"));
+                    person.setPortraitId(person_obj.getInteger("portrait_id"));
+                    person.setPortraitUrl(person_obj.getString("portrait_url"));
                     person.setBirthday(person_obj.getInteger("birthday"));
                     person.setGender(person_obj.getInteger("gender"));
                     person.setAuth(person_obj.getInteger("auth"));
@@ -287,11 +362,11 @@ public class ActionIntentService extends IntentService {
             if(person_obj != null){
                 Person person = new Person();
                 person.setGroup(Const.GROUP_ID_FAMILY_PROFILE);
-                person.setUser_id(person_obj.getLong("family_id"));
+                person.setUserId(person_obj.getLong("family_id"));
                 person.setName(person_obj.getString("name"));
                 person.setSpell(person_obj.getString("spell"));
-                person.setPortrait_id(person_obj.getInteger("portrait_id"));
-                person.setPortrait_url(person_obj.getString("portrait_url"));
+                person.setPortraitId(person_obj.getInteger("portrait_id"));
+                person.setPortraitUrl(person_obj.getString("portrait_url"));
                 family_list.add(person);
             }
             //memebers
@@ -304,12 +379,12 @@ public class ActionIntentService extends IntentService {
                     person_obj = person_array.getJSONObject(j);
                     Person person = new Person();
                     person.setGroup(Const.GROUP_ID_FAMILY);
-                    person.setUser_id(person_obj.getLong("user_id"));
+                    person.setUserId(person_obj.getLong("user_id"));
                     person.setName(person_obj.getString("name"));
-                    person.setDevice_type(person_obj.getInteger("device_type"));
+                    person.setDeviceType(person_obj.getInteger("device_type"));
                     person.setSpell(person_obj.getString("spell"));
-                    person.setPortrait_id(person_obj.getInteger("portrait_id"));
-                    person.setPortrait_url(person_obj.getString("portrait_url"));
+                    person.setPortraitId(person_obj.getInteger("portrait_id"));
+                    person.setPortraitUrl(person_obj.getString("portrait_url"));
                     person.setBirthday(person_obj.getInteger("birthday"));
                     person.setGender(person_obj.getInteger("gender"));
                     person.setAuth(person_obj.getInteger("auth"));
@@ -358,12 +433,12 @@ public class ActionIntentService extends IntentService {
                     person_obj = person_array.getJSONObject(j);
                     Person person = new Person();
                     person.setGroup(Const.GROUP_ID_FRIEND);
-                    person.setUser_id(person_obj.getLong("user_id"));
+                    person.setUserId(person_obj.getLong("user_id"));
                     person.setName(person_obj.getString("name"));
-                    person.setDevice_type(person_obj.getInteger("device_type"));
+                    person.setDeviceType(person_obj.getInteger("device_type"));
                     person.setSpell(person_obj.getString("spell"));
-                    person.setPortrait_id(person_obj.getInteger("portrait_id"));
-                    person.setPortrait_url(person_obj.getString("portrait_url"));
+                    person.setPortraitId(person_obj.getInteger("portrait_id"));
+                    person.setPortraitUrl(person_obj.getString("portrait_url"));
                     person.setBirthday(person_obj.getInteger("birthday"));
                     person.setGender(person_obj.getInteger("gender"));
                     person.setAuth(person_obj.getInteger("auth"));
@@ -392,8 +467,15 @@ public class ActionIntentService extends IntentService {
             break;
         }
 
-        if(write_flag)
-           editor.commit();
+        if(write_flag) {
+            editor.commit();
+            //开始下载头像
+            if(!PortraitManagerService.isDonwloadListEmpty()) {
+                Intent intent = new Intent(this, PortraitManagerService.class);
+                intent.putExtra("type", PortraitManagerService.ACTION_DOWNLAOD_PORTRAIT);
+                startService(intent);
+            }
+        }
     }
     private void handleActionContactRefresh(String json_str) {
         JSONObject obj = JSON.parseObject(json_str);
@@ -405,10 +487,7 @@ public class ActionIntentService extends IntentService {
             version = sp.getInt(update_type, 0);
             obj = new JSONObject();
             obj.put(update_type, version);
-            Intent intent = new Intent(getApplicationContext(), NetworkService.class);
-            intent.putExtra("type", ACTION_TYPE_UPDATE);
-            intent.putExtra("json", obj.toString());
-            startService(intent);
+            sendNetWorkMsg(ACTION_TYPE_UPDATE, obj.toString());
         }
         else{
             Log.e(TAG, "handleActionContactRefresh type = " + update_type);
@@ -420,8 +499,7 @@ public class ActionIntentService extends IntentService {
         if((groups == null) ||(groups.length < 1)) return;
         String[] RAW_PROJECTION = new String[] {Const.RAW_CONTACT_ID, Const.CONTACT_NAME, Const.CONTACT_USER_ID};
         String RAW_CONTACTS_WHERE = Const.MIMETYPE
-                + "="
-                + "'"
+                + "='"
                 + Const.CONTACT_ITEM_TYPE
                 + "' and (" + Const.CONTACT_GROUP_ID
                 + "=" + groups[0];
@@ -436,10 +514,11 @@ public class ActionIntentService extends IntentService {
                 RAW_CONTACTS_WHERE, null, Const.CONTACT_NAME + " COLLATE LOCALIZED asc");
 
         // Second, query the corresponding name of the raw_contact_id
-        while(cursor.moveToNext())
-        {
-            Log.e(TAG, "Member name is: " + cursor.getString(1) + ", user_id = " + cursor.getLong(2));
+        if(cursor != null) {
+            while (cursor.moveToNext()) {
+                Log.e(TAG, "Member name is: " + cursor.getString(1) + ", user_id = " + cursor.getLong(2));
+            }
+            cursor.close();
         }
-        cursor.close();
     }
 }

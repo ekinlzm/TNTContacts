@@ -12,26 +12,31 @@ import cn.teemo.www.aidl.ISocketService;
 
 public class NetworkService extends Service {
     private static final String TAG = "NetworkService";
-
-    private boolean mNetworkBinded = false;
-    private ISocketService mNetworkService;
+    private static boolean mNetworkBinded = false;
+    private ISocketService mNetworkService = null;
 
     public NetworkService() {
+    }
+
+    public static boolean isNetWorkBinded(){
+        return mNetworkBinded;
     }
 
     @Override
     public void onCreate() {
         super.onCreate();
-        bindNetWork();
+        //bindNetWork(); //统一放在onStartCommand里，可能会错过开机消息，
     }
+
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
-        if(!mNetworkBinded){
-            Log.e(TAG, "NetworkService not bind");
+        int type = intent.getIntExtra("type", 0);
+        if(type == 0){
+            if(!mNetworkBinded)
+                bindNetWork();
         }
         else{
-            int type = intent.getIntExtra("type", 0);
             String json = intent.getStringExtra("json");
             if((type != 0) && (json != null)){
                 try {
@@ -41,6 +46,7 @@ public class NetworkService extends Service {
                 }
             }
         }
+
         return START_STICKY;
     }
 
@@ -72,10 +78,8 @@ public class NetworkService extends Service {
 
         @Override
         public void onServiceDisconnected(ComponentName componentName) {
-            if(!mNetworkBinded)
-                bindNetWork();
-
             mNetworkBinded = false;
+            mNetworkService = null;
         }
     };
 }

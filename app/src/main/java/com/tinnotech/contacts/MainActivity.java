@@ -25,10 +25,6 @@ public class MainActivity extends AppCompatActivity {
             ActivityCompat.requestPermissions(MainActivity.this, new String[]{Manifest.permission.READ_CONTACTS}, 1);
         }
 
-        //test
-        Intent intent = new Intent(this, NetworkService.class);
-        startService(intent);
-
         //Intent intent1 = new Intent(MainActivity.this, ActionIntentService.class);
        // intent1.putExtra("type", -1);
         //startService(intent1);
