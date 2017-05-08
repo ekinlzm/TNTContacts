@@ -25,26 +25,12 @@ public class MainActivity extends AppCompatActivity {
             ActivityCompat.requestPermissions(MainActivity.this, new String[]{Manifest.permission.READ_CONTACTS}, 1);
         }
 
-        //Intent intent1 = new Intent(MainActivity.this, ActionIntentService.class);
-       // intent1.putExtra("type", -1);
-        //startService(intent1);
-
         Button btn1 = (Button)findViewById(R.id.button_login);
         btn1.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View view) {
-                SharedPreferences sp = getSharedPreferences(Const.SP_FILE_NAME, Context.MODE_PRIVATE);
-                final int contact_version = sp.getInt(Const.SP_KEY_CONTACT, 0);
-                final int family_version = sp.getInt(Const.SP_KEY_FAMILY, 0);
-                final int friend_version = sp.getInt(Const.SP_KEY_FRIEND, 0);
-                JSONObject obj = new JSONObject();
-                obj.put(Const.SP_KEY_CONTACT, contact_version);
-                obj.put(Const.SP_KEY_FAMILY, family_version);
-                obj.put(Const.SP_KEY_FRIEND, friend_version);
-
-                Intent intent = new Intent(MainActivity.this, NetworkService.class);
-                intent.putExtra("type", 20);
-                intent.putExtra("json", obj.toString());
+                Intent intent = new Intent(MainActivity.this, NetworkIntentService.class);
+                intent.putExtra("type", NetworkIntentService.ACTION_TYPE_TEST_CONTACTS_UPDATE);
                 startService(intent);
             }
         });
@@ -53,8 +39,8 @@ public class MainActivity extends AppCompatActivity {
         btn_bind.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View view) {
-                Intent intent = new Intent(MainActivity.this, ActionIntentService.class);
-                intent.putExtra("type", 2);
+                Intent intent = new Intent(MainActivity.this, NetworkIntentService.class);
+                intent.putExtra("type", NetworkIntentService.ACTION_TYPE_BIND);
                 startService(intent);
             }
         });
@@ -63,8 +49,8 @@ public class MainActivity extends AppCompatActivity {
         btn2.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View view) {
-                Intent intent = new Intent(MainActivity.this, ActionIntentService.class);
-                intent.putExtra("type", 3);
+                Intent intent = new Intent(MainActivity.this, NetworkIntentService.class);
+                intent.putExtra("type", NetworkIntentService.ACTION_TYPE_UNBIND);
                 startService(intent);
             }
         });
@@ -73,7 +59,7 @@ public class MainActivity extends AppCompatActivity {
         btn3.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View view) {
-                ActionIntentService.getContactsGroupMember(MainActivity.this, new int[]{Const.GROUP_ID_FAMILY_PROFILE, Const.GROUP_ID_FAMILY});
+                NetworkIntentService.getContactsGroupMember(MainActivity.this, new int[]{Const.GROUP_ID_FAMILY_PROFILE, Const.GROUP_ID_FAMILY});
             }
         });
     }

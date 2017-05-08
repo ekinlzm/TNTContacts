@@ -2,14 +2,18 @@ package com.tinnotech.contacts;
 
 import android.app.ActivityManager;
 import android.app.IntentService;
+import android.app.Service;
+import android.content.ComponentName;
 import android.content.ContentProviderOperation;
 import android.content.ContentResolver;
 import android.content.Intent;
 import android.content.Context;
 import android.content.OperationApplicationException;
+import android.content.ServiceConnection;
 import android.content.SharedPreferences;
 import android.database.Cursor;
 import android.net.Uri;
+import android.os.IBinder;
 import android.os.RemoteException;
 import android.provider.ContactsContract;
 import android.util.Log;
@@ -23,24 +27,33 @@ import java.io.FileInputStream;
 import java.util.ArrayList;
 import java.util.Date;
 
-public class ActionIntentService extends IntentService {
+import cn.teemo.www.aidl.ISocketService;
+
+public class NetworkIntentService extends IntentService {
     public static final int ACTION_TYPE_INIT = -1;  //内部操作 开机初始化检查
+    public static final int ACTION_TYPE_TEST_CONTACTS_UPDATE = -2; //内部测试
     public static final int ACTION_TYPE_LOGIN = 1;
     public static final int ACTION_TYPE_BIND = 2;
     public static final int ACTION_TYPE_UNBIND = 3;
     public static final int ACTION_TYPE_COMMON_SETTING = 16;
-    public static final int ACTION_TYPE_UPDATE = 20;
-    public static final int ACTION_TYPE_REFRESH = 21;
+    public static final int ACTION_TYPE_CONTACTS_UPDATE = 20;
+    public static final int ACTION_TYPE_CONTACTS_REFRESH = 21;
 
-    private static final String TAG = "ActionIntentService";
+    private static final String TAG = "NetworkIntentService";
     private static final Long CACHE_CLEAN_INTERVAL = 7L * 24 * 3600 * 1000;
+    private boolean mNetworkBinded = false;
+    private ISocketService mNetworkService = null;
 
-    public ActionIntentService() {
-        super("ActionIntentService");
+    public NetworkIntentService() {
+        super("NetworkIntentService");
     }
 
     @Override
     public void onDestroy() {
+        if(mNetworkBinded) {
+            mNetworkBinded = false;
+            unbindService(mNetworkConn);
+        }
         super.onDestroy();
     }
 
@@ -55,6 +68,9 @@ public class ActionIntentService extends IntentService {
                 case ACTION_TYPE_INIT:
                     handleActionInit();
                     break;
+                case ACTION_TYPE_TEST_CONTACTS_UPDATE:
+                    handleActionTestContactsUpdate();
+                    break;
                 case ACTION_TYPE_LOGIN:
                     handleActionLogin(json);
                     break;
@@ -67,15 +83,55 @@ public class ActionIntentService extends IntentService {
                 case ACTION_TYPE_COMMON_SETTING:
                     handleActionCommonSetting(json);
                     break;
-                case ACTION_TYPE_UPDATE:
+                case ACTION_TYPE_CONTACTS_UPDATE:
                     handleActionContactUpdate(json);
                     break;
-                case ACTION_TYPE_REFRESH:
+                case ACTION_TYPE_CONTACTS_REFRESH:
                     handleActionContactRefresh(json);
                     break;
                 default:
                     break;
             }
+        }
+    }
+
+    private void bindNetWork() {
+        Intent intent = new Intent("cn.teemo.www.network.ISocketService");
+        intent.setPackage("cn.teemo.www.network");
+        bindService(intent, mNetworkConn, Service.BIND_AUTO_CREATE);
+    }
+    private ServiceConnection mNetworkConn = new ServiceConnection() {
+        @Override
+        public void onServiceConnected(ComponentName componentName, IBinder iBinder) {
+            mNetworkService = ISocketService.Stub.asInterface(iBinder);
+            mNetworkBinded = true;
+        }
+
+        @Override
+        public void onServiceDisconnected(ComponentName componentName) {
+            mNetworkBinded = false;
+            mNetworkService = null;
+        }
+    };
+
+    private void sendNetWorkMsg(int type, String json){
+        if(!mNetworkBinded)
+        {
+            bindNetWork();
+            while(!mNetworkBinded) {
+                try {
+                    Log.e(TAG, "wait network binded!!");
+                    Thread.sleep(1000);
+                } catch (Exception e) {
+                    e.printStackTrace();
+                }
+            }
+        }
+
+        try {
+            mNetworkService.send(type, json, new byte[]{'a'});
+        }catch(Exception e){
+            e.printStackTrace();
         }
     }
 
@@ -177,12 +233,6 @@ public class ActionIntentService extends IntentService {
         getContentResolver().applyBatch(ContactsContract.AUTHORITY, ops);
     }
 
-    private void sendNetWorkMsg(int type, String json){
-        Intent intent = new Intent(getApplicationContext(), NetworkService.class);
-        intent.putExtra("type", type);
-        intent.putExtra("json", json);
-        startService(intent);
-    }
     private void handleActionInit() {
         /* 查看电话本版本号， 如果所有的都为0， 清理电话本， 否则检查头像是否都已经下载完毕， 另外定期的清理一下头像缓存 */
         SharedPreferences sp = getSharedPreferences(Const.SP_FILE_NAME, Context.MODE_PRIVATE);
@@ -215,6 +265,18 @@ public class ActionIntentService extends IntentService {
         }
     }
 
+    private void handleActionTestContactsUpdate(){
+        SharedPreferences sp = getSharedPreferences(Const.SP_FILE_NAME, Context.MODE_PRIVATE);
+        final int contact_version = sp.getInt(Const.SP_KEY_CONTACT, 0);
+        final int family_version = sp.getInt(Const.SP_KEY_FAMILY, 0);
+        final int friend_version = sp.getInt(Const.SP_KEY_FRIEND, 0);
+        JSONObject obj = new JSONObject();
+        obj.put(Const.SP_KEY_CONTACT, contact_version);
+        obj.put(Const.SP_KEY_FAMILY, family_version);
+        obj.put(Const.SP_KEY_FRIEND, friend_version);
+        sendNetWorkMsg(ACTION_TYPE_CONTACTS_UPDATE, obj.toString());
+    }
+
     private void handleActionLogin(String json_str) {
         JSONObject obj = JSON.parseObject(json_str);
         if (!obj.containsKey("status")) return;
@@ -228,7 +290,7 @@ public class ActionIntentService extends IntentService {
         obj.put(Const.SP_KEY_CONTACT, contact_version);
         obj.put(Const.SP_KEY_FAMILY, family_version);
         obj.put(Const.SP_KEY_FRIEND, friend_version);
-        sendNetWorkMsg(ACTION_TYPE_UPDATE, obj.toString());
+        sendNetWorkMsg(ACTION_TYPE_CONTACTS_UPDATE, obj.toString());
     }
 
     private void handleActionBind() {
@@ -237,7 +299,7 @@ public class ActionIntentService extends IntentService {
         obj.put(Const.SP_KEY_CONTACT, 0);
         obj.put(Const.SP_KEY_FAMILY, 0);
         obj.put(Const.SP_KEY_FRIEND, 0);
-        sendNetWorkMsg(ACTION_TYPE_UPDATE, obj.toString());
+        sendNetWorkMsg(ACTION_TYPE_CONTACTS_UPDATE, obj.toString());
         //创建头像cache目录
         File portraitCacheDir = getDir(Const.portrait_cache_dir,Context.MODE_PRIVATE);
     }
@@ -486,7 +548,7 @@ public class ActionIntentService extends IntentService {
             version = sp.getInt(update_type, 0);
             obj = new JSONObject();
             obj.put(update_type, version);
-            sendNetWorkMsg(ACTION_TYPE_UPDATE, obj.toString());
+            sendNetWorkMsg(ACTION_TYPE_CONTACTS_UPDATE, obj.toString());
         }
         else{
             Log.e(TAG, "handleActionContactRefresh type = " + update_type);

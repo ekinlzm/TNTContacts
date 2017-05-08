@@ -12,7 +12,7 @@ public class NetworkReceiver extends BroadcastReceiver {
         if (intent == null)
             return;
         Log.i(TAG, "action = " + intent.getAction().toString());
-        Intent actionIntent = new Intent(context, ActionIntentService.class);
+        Intent actionIntent = new Intent(context, NetworkIntentService.class);
         actionIntent.setAction("com.tinnotech.contacts.NETWORK_ACTION");
         actionIntent.putExtra("type", intent.getIntExtra("type", 0));
         actionIntent.putExtra("json", intent.getStringExtra("json"));
